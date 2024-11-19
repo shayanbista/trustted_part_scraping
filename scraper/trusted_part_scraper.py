@@ -16,7 +16,7 @@ class TrustedPartScraper:
         """Parses the entire page and writes the scraped data to a JSON file."""
         scraped_data = {}
 
-        # Scrape title details
+        #  Scrape title details
         title, model, stock_availability = self.scrape_title()
         scraped_data["mfg"] = title
         scraped_data["mpn"] = model
@@ -36,7 +36,7 @@ class TrustedPartScraper:
         product_informations = self.scrape_product_informations()
         scraped_data["product_information"] = product_informations
 
-        # Scrape similar parts
+        #  Scrape similar parts
         similar_parts = self.scrape_similar_parts_serial_number()
         scraped_data["similar_parts"] = similar_parts
 
@@ -174,34 +174,68 @@ class TrustedPartScraper:
 
     def scrape_similar_parts_serial_number(self):
         """Extracts serial numbers of similar parts."""
+
+        def get_text_or_none(element):
+            return element.get_text(strip=True) if element else None
+
         similar_parts_table = self.soup.find("table", id="SimilarPartsTable")
+
         if not similar_parts_table:
             return None
 
-        part_divs = similar_parts_table.find_all(
-            "div", class_="flex flex-col items-center justify-center p-1"
-        )
-        if not part_divs:
-            return None
+        similar_parts_number = []
 
-        return [
-            div.find_all("a")[1].get_text(strip=True)
-            for div in part_divs
-            if div.find_all("a") and len(div.find_all("a")) > 1
-        ]
+        rows = similar_parts_table.find("tbody").find_all("tr")
+
+        similar_name_1 = get_text_or_none(
+            rows[1].select_one("td:nth-child(2) a:nth-of-type(2)")
+        )
+        similar_name_2 = get_text_or_none(
+            rows[1].select_one("td:nth-child(3) a:nth-of-type(2)")
+        )
+        similar_name_3 = get_text_or_none(
+            rows[1].select_one("td:nth-child(4) a:nth-of-type(2)")
+        )
+        similar_name_4 = get_text_or_none(
+            rows[1].select_one("td:nth-child(5) a:nth-of-type(2)")
+        )
+
+        similar_parts_number.extend(
+            [similar_name_1, similar_name_2, similar_name_3, similar_name_4]
+        )
+
+        return similar_parts_number
 
     def scrape_descriptions(self):
         """Extracts long descriptions."""
-        li_elements = self.soup.select("section.part-detail-section ul.panel-body li")
-        return (
-            " ".join(li.get_text(strip=True) for li in li_elements)
-            if li_elements
-            else None
-        )
+
+        description_ul = self.soup.select(".panel-body")
+
+        if not description_ul:
+            return None
+
+        li_elements = description_ul[0].find_all("li")
+
+        long_desc = " ".join([li.get_text(strip=True) for li in li_elements])
+
+        return long_desc
 
     def scrape_referenced_names(self):
         """Extracts referenced names."""
-        div_elements = self.soup.select("div.panel.py-4.px-8 div")
-        return (
-            [div.get_text(strip=True) for div in div_elements] if div_elements else None
-        )
+
+        reference_names = []
+
+        sections = self.soup.find_all("section")
+
+        last_section = sections[-1]
+
+        names = last_section.find_all("div")
+
+        if not names:
+            return None
+
+        for name in names[1:]:
+            raw_text = name.get_text()
+            cleaned_text = " ".join(raw_text.split())
+            reference_names.append(cleaned_text)
+        return reference_names

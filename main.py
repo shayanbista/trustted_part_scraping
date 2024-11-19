@@ -1,21 +1,34 @@
-
-import osimport json
+import os
+import json
 from bs4 import BeautifulSoup
 from scraper.trusted_part_scraper import TrustedPartScraper
+
 
 def main():
     folder_path = "./output"
     combined_data = []
+    file_name = "page_content.html"
     output_filename = "../combined_data.json"
 
     if not os.path.exists(folder_path):
         print(f"Folder '{folder_path}' does not exist.")
         return
 
+    file_path = os.path.join(folder_path, file_name)
+
+    # with open(file_path, "r", encoding="utf-8") as file:
+    #     content = file.read()
+
+    # soup = BeautifulSoup(content, "html.parser")
+
+    # res = TrustedPartScraper(soup)
+    # result=res.parse()
+    # print("result",result)
+
+
     os.chdir(folder_path)
     html_files = [file for file in os.listdir() if file.endswith(".html")]
 
-    print("html file", len(html_files))
 
     for html_file in html_files:
         with open(html_file, "r", encoding="utf-8") as file:
@@ -55,6 +68,6 @@ def main():
     except Exception as save_error:
         print(f"Error saving combined data to {output_filename}: {save_error}")
 
+
 if __name__ == "__main__":
     main()
-

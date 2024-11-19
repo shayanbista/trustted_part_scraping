@@ -7,90 +7,82 @@ from scrapingbee import ScrapingBeeClient
 from bs4 import BeautifulSoup
 from utils.button_utils import extract_button_info
 
+from itertools import zip_longest
+
 
 class TrustedPartScraper:
-    def __init__(self, soup):
+    def __init__(self, soup: BeautifulSoup):
         self.soup = soup
 
-    def parse(self):
+    def parse(self) -> dict:
         """Parses the entire page and writes the scraped data to a JSON file."""
         scraped_data = {}
 
-        #  Scrape title details
         title, model, stock_availability = self.scrape_title()
-        scraped_data["mfg"] = title
-        scraped_data["mpn"] = model
-        scraped_data["part_status"] = stock_availability
-
-        # Scrape categories and description
         categories, description = self.scrape_categories()
-        scraped_data["categories"] = categories
-        scraped_data["description"] = description
-
-        # Scrape stock and price
         stock_and_price_data = self.scrape_stock_and_price()
-        if stock_and_price_data:
-            scraped_data["stock_and_price"] = stock_and_price_data
-
-        # Scrape product information
         product_informations = self.scrape_product_informations()
-        scraped_data["product_information"] = product_informations
-
-        #  Scrape similar parts
         similar_parts = self.scrape_similar_parts_serial_number()
-        scraped_data["similar_parts"] = similar_parts
-
-        # Scrape long descriptions
         long_desc = self.scrape_descriptions()
-        scraped_data["long_desc"] = long_desc
-
-        # Scrape referenced names
         referenced_names = self.scrape_referenced_names()
-        scraped_data["referenced_names"] = referenced_names
+
+        scraped_data.update({
+            "mfg": title,
+            "mpn":model,
+            "part_status":stock_availability,
+            "referenced_names": self.scrape_referenced_names(),
+            "categories":categories,
+            "description":description,
+            "stockandprice":stock_and_price_data,
+            "product_information":product_informations,
+            "similar_parts":similar_parts,
+            "long_desc":long_desc,
+            "referenced_names":referenced_names
+        })
 
         return scraped_data
 
     def scrape_title(self):
         """Extracts the title, model, and stock availability of the product."""
-        title_tag = self.soup.find("h1")
-        stock_availability = self.soup.find(
-            "div",
-            class_="rounded-sm font-bold text-lg px-3 py-1.5 text-success-900 bg-success-200 whitespace-nowrap",
-        )
-        stock_availability = (
-            stock_availability.text.strip() if stock_availability else None
-        )
-        if title_tag:
-            span_tag = title_tag.find("span")
-            if span_tag:
-                product_model = span_tag.text.strip()
-                title_text = title_tag.text.replace(product_model, "").strip()
-                return title_text, product_model, stock_availability
-            else:
-                title_text = title_tag.text.strip()
-                return title_text, None, stock_availability
-        return None, None, stock_availability
+
+        stock_div = self.soup.select_one("div.flex.flex-col.gap-2 > div > div")
+        title = self.soup.select_one(
+            "div.flex.flex-col.gap-2 > div > h1 >div"
+        ).get_text(strip=True)
+        model_number = self.soup.select_one(
+            "div.flex.flex-col.gap-2 > div > h1 > span"
+        ).get_text(strip=True)
+
+        if stock_div:
+            stock_div = stock_div.get_text(strip=True)
+
+        return stock_div, title, model_number
 
     def scrape_categories(self):
         """Extracts product categories and description."""
+
+        category_names = []
+
         category_div = self.soup.find("div", class_="flex flex-col gap-2")
-        if not category_div:
-            return None, None
+        categories = category_div.select("div:nth-of-type(2) a")
+        description = category_div.select_one("div:nth-of-type(3)")
 
-        description_div = self.soup.find("div", class_="lg:group-[.is-sticky]:hidden")
-        description = description_div.text.strip() if description_div else None
+        if not categories:
+            return None
 
-        categories = []
-        category_anchors = category_div.find_all("a")
-        for anchor in category_anchors:
-            category_name = anchor.text.strip()
-            categories.append({"category_name": category_name})
+        for category in categories:
+            category_text = category.get_text(strip=True)
+            category_names.append(category_text)
 
-        return categories, description
+        if description:
+            description = description.get_text(strip=True)
+
+        return description, category_names
 
     def scrape_stock_and_price(self):
         """Extracts stock and price details from the table."""
         stock_table = self.soup.find("table", {"id": "ExactMatchesTable"})
+        
         if not stock_table:
             return None
 
@@ -163,7 +155,7 @@ class TrustedPartScraper:
             return None
 
         specs_data = {}
-        for term, description in zip(
+        for term, description in zip_longest(
             specs_container.find_all("dt"), specs_container.find_all("dd")
         ):
             spec_name = term.get_text(strip=True)
@@ -188,11 +180,12 @@ class TrustedPartScraper:
         rows = similar_parts_table.find("tbody").find_all("tr")
 
         similar_name_1 = get_text_or_none(
-            rows[1].select_one("td:nth-child(2) a:nth-of-type(2)")
+            rows[1].select_one(f"td:nth-child(2) a:nth-of-type(2)")
         )
+
         similar_name_2 = get_text_or_none(
             rows[1].select_one("td:nth-child(3) a:nth-of-type(2)")
-        )
+         )
         similar_name_3 = get_text_or_none(
             rows[1].select_one("td:nth-child(4) a:nth-of-type(2)")
         )
@@ -209,33 +202,21 @@ class TrustedPartScraper:
     def scrape_descriptions(self):
         """Extracts long descriptions."""
 
-        description_ul = self.soup.select(".panel-body")
+        description_ul = self.soup.select(".panel-body li")
 
         if not description_ul:
             return None
 
-        li_elements = description_ul[0].find_all("li")
-
-        long_desc = " ".join([li.get_text(strip=True) for li in li_elements])
+        long_desc = " ".join([li.get_text(strip=True) for li in description_ul])
 
         return long_desc
 
     def scrape_referenced_names(self):
         """Extracts referenced names."""
-
         reference_names = []
-
-        sections = self.soup.find_all("section")
-
-        last_section = sections[-1]
-
-        names = last_section.find_all("div")
-
-        if not names:
-            return None
-
-        for name in names[1:]:
-            raw_text = name.get_text()
+        names = self.soup.select("section:last-child div.panel > div")
+        for name in names:
+            raw_text = name.get_text(strip=True)
             cleaned_text = " ".join(raw_text.split())
             reference_names.append(cleaned_text)
         return reference_names
